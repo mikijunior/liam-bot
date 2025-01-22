@@ -35,7 +35,6 @@ func AddUser(db *sql.DB, telegramID int64) error {
 	return err
 }
 
-// Оновлення валюти користувача
 func SetUserCurrency(db *sql.DB, telegramID int64, currency string) error {
 	query := `
 		UPDATE users
@@ -45,3 +44,14 @@ func SetUserCurrency(db *sql.DB, telegramID int64, currency string) error {
 	_, err := db.Exec(query, currency, telegramID)
 	return err
 }
+
+func SetUserMonthlyBudget(db *sql.DB, telegramID int64, budget float64) error {
+	query := `
+		UPDATE users
+		SET monthly_budget = $1
+		WHERE telegram_id = $2;
+	`
+	_, err := db.Exec(query, budget, telegramID)
+	return err
+}
+

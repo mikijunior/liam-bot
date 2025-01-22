@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,6 +43,36 @@ func main() {
 
 	bot.Handle("/setcurrency", func(c telebot.Context) error {
 		showCurrencyButtons(bot, c, "Оберіть нову валюту:")
+		return nil
+	})
+
+	var userStates = make(map[int64]string)
+
+	bot.Handle("/setbudget", func(c telebot.Context) error {
+		telegramID := c.Sender().ID
+		userStates[telegramID] = "awaiting_budget"
+		return c.Send("Будь ласка, введіть бажаний місячний бюджет:")
+	})
+
+	bot.Handle(telebot.OnText, func(c telebot.Context) error {
+		telegramID := c.Sender().ID
+
+		if userStates[telegramID] == "awaiting_budget" {
+			budget, err := strconv.ParseFloat(c.Text(), 64)
+			if err != nil || budget <= 0 {
+				return c.Send("Будь ласка, введіть коректну суму бюджету.")
+			}
+
+			err = db.SetUserMonthlyBudget(database, telegramID, budget)
+			if err != nil {
+				log.Printf("Помилка збереження бюджету для користувача (%d): %v", telegramID, err)
+				return c.Send("Сталася помилка при збереженні бюджету. Спробуйте ще раз.")
+			}
+
+			delete(userStates, telegramID)
+			return c.Send(fmt.Sprintf("Місячний бюджет успішно встановлено: %.2f", budget))
+		}
+
 		return nil
 	})
 
