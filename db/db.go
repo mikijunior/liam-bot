@@ -55,3 +55,44 @@ func SetUserMonthlyBudget(db *sql.DB, telegramID int64, budget float64) error {
 	return err
 }
 
+func AddExpense(db *sql.DB, userID int, amount float64, category, note string) error {
+	query := `
+		INSERT INTO expenses (user_id, amount, category, note, created_at)
+		VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP);
+	`
+	_, err := db.Exec(query, userID, amount, category, note)
+	return err
+}
+
+func GetMonthlyExpenses(db *sql.DB, userID int) (float64, error) {
+	query := `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM expenses
+		WHERE user_id = $1 AND date_trunc('month', created_at) = date_trunc('month', CURRENT_TIMESTAMP);
+	`
+	var total float64
+	err := db.QueryRow(query, userID).Scan(&total)
+	return total, err
+}
+
+func GetUserMonthlyBudget(db *sql.DB, userID int64) (float64, error) {
+	query := `
+		SELECT monthly_budget
+		FROM users
+		WHERE telegram_id = $1;
+	`
+	var budget float64
+	err := db.QueryRow(query, userID).Scan(&budget)
+	return budget, err
+}
+
+func GetUserID(db *sql.DB, telegramID int64) (int, error) {
+	query := `
+		SELECT id
+		FROM users
+		WHERE telegram_id = $1;
+	`
+	var userID int
+	err := db.QueryRow(query, telegramID).Scan(&userID)
+	return userID, err
+}

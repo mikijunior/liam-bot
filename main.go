@@ -47,6 +47,7 @@ func main() {
 	})
 
 	var userStates = make(map[int64]string)
+	var tempExpenses = make(map[int64]map[string]string)
 
 	bot.Handle("/setbudget", func(c telebot.Context) error {
 		telegramID := c.Sender().ID
@@ -57,7 +58,8 @@ func main() {
 	bot.Handle(telebot.OnText, func(c telebot.Context) error {
 		telegramID := c.Sender().ID
 
-		if userStates[telegramID] == "awaiting_budget" {
+		switch userStates[telegramID] {
+		case "awaiting_budget":
 			budget, err := strconv.ParseFloat(c.Text(), 64)
 			if err != nil || budget <= 0 {
 				return c.Send("Будь ласка, введіть коректну суму бюджету.")
@@ -71,9 +73,90 @@ func main() {
 
 			delete(userStates, telegramID)
 			return c.Send(fmt.Sprintf("Місячний бюджет успішно встановлено: %.2f", budget))
-		}
 
-		return nil
+		case "awaiting_amount":
+			amount, err := strconv.ParseFloat(c.Text(), 64)
+			if err != nil || amount <= 0 {
+				return c.Send("Будь ласка, введіть коректну суму.")
+			}
+
+			tempExpenses[telegramID]["amount"] = c.Text()
+			userStates[telegramID] = "awaiting_category"
+
+			return c.Send("Вкажіть категорію витрати:")
+
+		case "awaiting_category":
+			category := strings.TrimSpace(c.Text())
+			if category == "" {
+				return c.Send("Категорія не може бути порожньою.")
+			}
+
+			tempExpenses[telegramID]["category"] = category
+			userStates[telegramID] = "awaiting_note"
+
+			return c.Send("Додайте коментар до витрати (або напишіть \"пропустити\"):")
+
+		case "awaiting_note":
+			note := strings.TrimSpace(c.Text())
+			if strings.ToLower(note) == "пропустити" {
+				note = ""
+			}
+
+			tempExpenses[telegramID]["note"] = note
+
+			amount, _ := strconv.ParseFloat(tempExpenses[telegramID]["amount"], 64)
+			category := tempExpenses[telegramID]["category"]
+
+			userID, err := db.GetUserID(database, telegramID)
+			if err != nil {
+				delete(userStates, telegramID)
+				delete(tempExpenses, telegramID)
+				return c.Send("Ваш профіль не знайдено. Будь ласка, скористайтесь командою /start для реєстрації.")
+			}
+
+			err = db.AddExpense(database, userID, amount, category, note)
+			if err != nil {
+				delete(userStates, telegramID)
+				delete(tempExpenses, telegramID)
+				return c.Send("Сталася помилка при збереженні витрати. Спробуйте ще раз.")
+			}
+
+			monthlyExpenses, err := db.GetMonthlyExpenses(database, userID)
+			if err != nil {
+				delete(userStates, telegramID)
+				delete(tempExpenses, telegramID)
+				return c.Send("Сталася помилка при розрахунку місячних витрат.")
+			}
+
+			response := fmt.Sprintf("Витрату %.2f %s успішно додано!\nЗагальна сума витрат за поточний місяць: %.2f", amount, category, monthlyExpenses)
+
+			budget, err := db.GetUserMonthlyBudget(database, telegramID)
+			if err == nil && budget > 0 {
+				remaining := budget - monthlyExpenses
+				response += fmt.Sprintf("\nЗалишок у місячному бюджеті: %.2f", remaining)
+
+				if remaining > 0 && remaining <= budget*0.1 {
+					response += "\n⚠️ Увага! У вашому бюджеті залишилось менше 10%."
+				}
+			}
+
+			delete(userStates, telegramID)
+			delete(tempExpenses, telegramID)
+
+			return c.Send(response)
+
+		default:
+			return nil
+		}
+	})
+
+	bot.Handle("/addexpense", func(c telebot.Context) error {
+		telegramID := c.Sender().ID
+
+		tempExpenses[telegramID] = make(map[string]string)
+		userStates[telegramID] = "awaiting_amount"
+
+		return c.Send("Вкажіть суму витрати:")
 	})
 
 	bot.Handle(telebot.OnCallback, func(c telebot.Context) error {
@@ -84,7 +167,7 @@ func main() {
 			currency := strings.TrimPrefix(data, prefix)
 			telegramID := c.Sender().ID
 
-			validCurrencies := map[string]bool{"USD": true, "EUR": true, "UAH": true, "PLN": true}
+			validCurrencies := map[string]bool{"USD": true, "EUR": true, "UAH": true, "PLN": true, "CAD": true}
 			if !validCurrencies[currency] {
 				log.Printf("Отримано невідомий код валюти: %s", currency)
 				return c.Respond(&telebot.CallbackResponse{Text: "Некоректна валюта. Спробуйте ще раз."})
@@ -115,8 +198,9 @@ func showCurrencyButtons(bot *telebot.Bot, c telebot.Context, message string) {
 	btnEUR := currencies.Data("EUR", "set_currency:EUR")
 	btnUAH := currencies.Data("UAH", "set_currency:UAH")
 	btnPLN := currencies.Data("PLN", "set_currency:PLN")
+	btnCAD := currencies.Data("CAD", "set_currency:CAD")
 	currencies.Inline(
-		currencies.Row(btnUSD, btnEUR, btnUAH, btnPLN),
+		currencies.Row(btnUSD, btnEUR, btnUAH, btnPLN, btnCAD),
 	)
 
 	bot.Send(c.Sender(), message, currencies)
