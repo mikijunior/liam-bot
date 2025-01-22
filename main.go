@@ -35,28 +35,23 @@ func main() {
 			return nil
 		}
 
-		currencies := &telebot.ReplyMarkup{}
-		btnUSD := currencies.Data("USD", "set_currency:USD")
-		btnEUR := currencies.Data("EUR", "set_currency:EUR")
-		btnUAH := currencies.Data("UAH", "set_currency:UAH")
-		btnPLN := currencies.Data("PLN", "set_currency:PLN")
-		currencies.Inline(
-			currencies.Row(btnUSD, btnEUR, btnUAH, btnPLN),
-		)
+		showCurrencyButtons(bot, c, "Ласкаво просимо до трекера витрат! Оберіть валюту:")
+		return nil
+	})
 
-		bot.Send(c.Sender(), "Ласкаво просимо до трекера витрат! Оберіть валюту:", currencies)
+	bot.Handle("/setcurrency", func(c telebot.Context) error {
+		showCurrencyButtons(bot, c, "Оберіть нову валюту:")
 		return nil
 	})
 
 	bot.Handle(telebot.OnCallback, func(c telebot.Context) error {
 		data := strings.TrimSpace(c.Data())
-	
 		const prefix = "set_currency:"
-	
+
 		if strings.HasPrefix(data, prefix) {
 			currency := strings.TrimPrefix(data, prefix)
 			telegramID := c.Sender().ID
-	
+
 			validCurrencies := map[string]bool{"USD": true, "EUR": true, "UAH": true, "PLN": true}
 			if !validCurrencies[currency] {
 				log.Printf("Отримано невідомий код валюти: %s", currency)
@@ -68,16 +63,29 @@ func main() {
 				log.Printf("Помилка оновлення валюти для користувача (%d): %v", telegramID, err)
 				return c.Respond(&telebot.CallbackResponse{Text: "Сталася помилка. Спробуйте ще раз."})
 			}
-	
+
 			log.Printf("Користувач (%d) вибрав валюту: %s", telegramID, currency)
 			c.Send("Валюта успішно збережена!")
 			return c.Respond()
 		}
-	
+
 		log.Printf("Отримано некоректний callback: %s", data)
 		return c.Respond(&telebot.CallbackResponse{Text: "Некоректний запит."})
-	})	
+	})
 
 	log.Println("Бот запущено...")
 	bot.Start()
+}
+
+func showCurrencyButtons(bot *telebot.Bot, c telebot.Context, message string) {
+	currencies := &telebot.ReplyMarkup{}
+	btnUSD := currencies.Data("USD", "set_currency:USD")
+	btnEUR := currencies.Data("EUR", "set_currency:EUR")
+	btnUAH := currencies.Data("UAH", "set_currency:UAH")
+	btnPLN := currencies.Data("PLN", "set_currency:PLN")
+	currencies.Inline(
+		currencies.Row(btnUSD, btnEUR, btnUAH, btnPLN),
+	)
+
+	bot.Send(c.Sender(), message, currencies)
 }
