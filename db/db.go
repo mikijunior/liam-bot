@@ -96,3 +96,57 @@ func GetUserID(db *sql.DB, telegramID int64) (int, error) {
 	err := db.QueryRow(query, telegramID).Scan(&userID)
 	return userID, err
 }
+
+func GetUsersWithBudget(db *sql.DB) ([]int64, error) {
+	query := `
+		SELECT telegram_id
+		FROM users
+		WHERE monthly_budget IS NOT NULL AND monthly_budget > 0;
+	`
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var userIDs []int64
+	for rows.Next() {
+		var telegramID int64
+		if err := rows.Scan(&telegramID); err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, telegramID)
+	}
+
+	return userIDs, nil
+}
+
+func GetBudgetStatusWithNotification(db *sql.DB, userID int64) (float64, float64, time.Time, error) {
+	query := `
+		SELECT COALESCE(monthly_budget, 0), COALESCE(SUM(amount), 0), COALESCE(last_notification, '1970-01-01'::timestamp)
+		FROM users
+		LEFT JOIN expenses ON users.id = expenses.user_id
+		WHERE users.telegram_id = $1
+		GROUP BY users.id;
+	`
+	var budget, totalExpenses float64
+	var lastNotification time.Time
+	err := db.QueryRow(query, userID).Scan(&budget, &totalExpenses, &lastNotification)
+	if err != nil {
+		return 0, 0, time.Time{}, err
+	}
+
+	remaining := budget - totalExpenses
+	percentageSpent := (totalExpenses / budget) * 100
+	return remaining, percentageSpent, lastNotification, nil
+}
+
+func UpdateLastNotification(db *sql.DB, telegramID int64) error {
+	query := `
+		UPDATE users
+		SET last_notification = $1
+		WHERE telegram_id = $2;
+	`
+	_, err := db.Exec(query, time.Now(), telegramID)
+	return err
+}

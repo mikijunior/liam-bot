@@ -188,6 +188,45 @@ func main() {
 		return c.Respond(&telebot.CallbackResponse{Text: "Некоректний запит."})
 	})
 
+	go func() {
+		for {
+			userIDs, err := db.GetUsersWithBudget(database)
+			if err != nil {
+				log.Printf("Помилка отримання користувачів для перевірки бюджету: %v", err)
+				time.Sleep(1 * time.Hour)
+				continue
+			}
+
+			for _, telegramID := range userIDs {
+				remaining, percentageSpent, lastNotification, err := db.GetBudgetStatusWithNotification(database, telegramID)
+				if err != nil {
+					log.Printf("Помилка перевірки бюджету для користувача (%d): %v", telegramID, err)
+					continue
+				}
+
+				currentYear, currentMonth, _ := time.Now().Date()
+				notificationYear, notificationMonth, _ := lastNotification.Date()
+
+				if percentageSpent >= 70 &&
+					(notificationYear != currentYear || notificationMonth != currentMonth) {
+					message := fmt.Sprintf("⚠️ Ви витратили %.2f%% вашого бюджету. Залишок: %.2f.", percentageSpent, remaining)
+					_, err := bot.Send(&telebot.User{ID: telegramID}, message)
+					if err != nil {
+						log.Printf("Помилка відправки повідомлення користувачу (%d): %v", telegramID, err)
+						continue
+					}
+
+					err = db.UpdateLastNotification(database, telegramID)
+					if err != nil {
+						log.Printf("Помилка оновлення часу нагадування для користувача (%d): %v", telegramID, err)
+					}
+				}
+			}
+
+			time.Sleep(1 * time.Hour)
+		}
+	}()
+
 	log.Println("Бот запущено...")
 	bot.Start()
 }
