@@ -39,8 +39,9 @@ func main() {
 		btnUSD := currencies.Data("USD", "set_currency:USD")
 		btnEUR := currencies.Data("EUR", "set_currency:EUR")
 		btnUAH := currencies.Data("UAH", "set_currency:UAH")
+		btnPLN := currencies.Data("PLN", "set_currency:PLN")
 		currencies.Inline(
-			currencies.Row(btnUSD, btnEUR, btnUAH),
+			currencies.Row(btnUSD, btnEUR, btnUAH, btnPLN),
 		)
 
 		bot.Send(c.Sender(), "Ласкаво просимо до трекера витрат! Оберіть валюту:", currencies)
@@ -56,7 +57,7 @@ func main() {
 			currency := strings.TrimPrefix(data, prefix)
 			telegramID := c.Sender().ID
 	
-			validCurrencies := map[string]bool{"USD": true, "EUR": true, "UAH": true}
+			validCurrencies := map[string]bool{"USD": true, "EUR": true, "UAH": true, "PLN": true}
 			if !validCurrencies[currency] {
 				log.Printf("Отримано невідомий код валюти: %s", currency)
 				return c.Respond(&telebot.CallbackResponse{Text: "Некоректна валюта. Спробуйте ще раз."})
